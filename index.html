@@ -198,7 +198,7 @@
     }
     
     .send-button {
-      background-color: var(--primary-color);
+      background-color: var(--gray);
       color: var(--white);
       border: none;
       border-radius: 24px;
@@ -208,9 +208,13 @@
       font-weight: 600;
       transition: background-color 0.3s;
     }
-    
-    .send-button:hover {
+
+    .send-button.active:hover {
       background-color: var(--primary-dark);
+    }
+
+    .send-button.active {
+      background-color: var(--primary-color);
     }
     
     /* Scrollbar styling */
