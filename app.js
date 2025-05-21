@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             const time = new Date(message.timestamp).toLocaleTimeString();
             messageElement.innerHTML = `
-                <div class="message received" id="message-item">
+                <div class="message received" id="message-container">
                     <div class="message-bubble">
                         ${message.text}
                     </div>
@@ -97,6 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         messagesContainer.appendChild(messageElement);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        displayContextMenu()
     }
     
     // Display system messages
@@ -105,6 +106,50 @@ document.addEventListener('DOMContentLoaded', () => {
             type: 'system',
             text: text,
             timestamp: new Date().toISOString()
+        });
+    }
+
+    // Display contextMenu
+    function displayContextMenu() {
+        const message = document.getElementById('message-container');
+        const contextMenu = document.getElementById('context-menu');
+    
+        if (!message || !contextMenu) {
+            console.error('Не знайдено елемент message-container або context-menu');
+            return;
+        }
+    
+        function closeContextMenu() {
+            contextMenu.style.display = "none";
+            document.removeEventListener('click', handleOutsideClick);
+        }
+    
+        function handleOutsideClick(e) {
+            if (!contextMenu.contains(e.target) && e.target !== message) {
+                closeContextMenu();
+            }
+        }
+    
+        message.addEventListener('click', (e) => {
+            e.stopPropagation(); 
+            
+            document.querySelectorAll('.context-menu').forEach(menu => {
+                if (menu !== contextMenu) menu.style.display = "none";
+            });
+    
+            const position = message.getBoundingClientRect();
+            const scrollX = window.scrollX || document.documentElement.scrollLeft;
+            const scrollY = window.scrollY || document.documentElement.scrollTop;
+            
+            contextMenu.style.display = "flex";
+            contextMenu.style.left = `${position.right + scrollX + 10}px`;
+            contextMenu.style.top = `${position.bottom + scrollY}px`;
+    
+            document.addEventListener('click', handleOutsideClick);
+        });
+    
+        contextMenu.querySelectorAll('.context-menu-item').forEach(item => {
+            item.addEventListener('click', closeContextMenu);
         });
     }
 });
