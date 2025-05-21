@@ -6,9 +6,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const messagesContainer = document.getElementById('messages');
     const messageForm = document.getElementById('message-form');
     const messageInput = document.getElementById('message-input');
-    
+    const sendButton = document.querySelector('.send-button');
+
     let socket;
     let currentUser;
+
+    function updateSendButton() {
+        if (messageInput.value.trim() !== '') {
+            sendButton.classList.add('active');
+        } else {
+            sendButton.classList.remove('active');
+        }
+    }
+
+    messageInput.addEventListener('input', updateSendButton);
 
     // Handle login
     loginBtn.addEventListener('click', (e) => {
@@ -17,47 +28,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (username) {
             currentUser = username;
-            
+
             // Initialize WebSocket connection
             socket = new WebSocket(`ws://${window.location.hostname}:8080`);
-            
+
             socket.onopen = () => {
                 console.log('WebSocket connection established');
-                
+
                 // Send the username to the server
                 socket.send(JSON.stringify({
                     type: 'join',
                     username: currentUser
                 }));
-                
+
                 // Show chat interface
                 loginContainer.style.display = 'none';
                 chatContainer.style.display = 'flex';
                 messageInput.focus();
             };
-            
+
             socket.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 displayMessage(message);
             };
-            
+
             socket.onclose = () => {
                 console.log('WebSocket connection closed');
                 displaySystemMessage('Connection to server lost. Please refresh the page.');
             };
-            
+
             socket.onerror = (error) => {
                 console.error('WebSocket error:', error);
                 displaySystemMessage('Connection error occurred.');
             };
         }
     });
-    
+
     // Handle message submission
     messageForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const messageText = messageInput.value.trim();
-        
+
         if (messageText && socket) {
             const message = {
                 type: 'message',
@@ -65,17 +76,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 text: messageText,
                 timestamp: new Date().toISOString()
             };
-            
+
             socket.send(JSON.stringify(message));
             messageInput.value = '';
+            updateSendButton();
         }
     });
-    
+
     // Display a message in the chat
     function displayMessage(message) {
         const messageElement = document.createElement('div');
         messageElement.className = 'message';
-        
+
         if (message.type === 'system') {
             messageElement.innerHTML = `<em>${message.text}</em>`;
             messageElement.style.color = '#666';
@@ -94,12 +106,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         }
-        
+
         messagesContainer.appendChild(messageElement);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
         displayContextMenu()
     }
-    
+
     // Display system messages
     function displaySystemMessage(text) {
         displayMessage({
@@ -113,41 +125,41 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayContextMenu() {
         const message = document.getElementById('message-container');
         const contextMenu = document.getElementById('context-menu');
-    
+
         if (!message || !contextMenu) {
             console.error('Не знайдено елемент message-container або context-menu');
             return;
         }
-    
+
         function closeContextMenu() {
             contextMenu.style.display = "none";
             document.removeEventListener('click', handleOutsideClick);
         }
-    
+
         function handleOutsideClick(e) {
             if (!contextMenu.contains(e.target) && e.target !== message) {
                 closeContextMenu();
             }
         }
-    
+
         message.addEventListener('click', (e) => {
-            e.stopPropagation(); 
-            
+            e.stopPropagation();
+
             document.querySelectorAll('.context-menu').forEach(menu => {
                 if (menu !== contextMenu) menu.style.display = "none";
             });
-    
+
             const position = message.getBoundingClientRect();
             const scrollX = window.scrollX || document.documentElement.scrollLeft;
             const scrollY = window.scrollY || document.documentElement.scrollTop;
-            
+
             contextMenu.style.display = "flex";
             contextMenu.style.left = `${position.right + scrollX + 10}px`;
             contextMenu.style.top = `${position.bottom + scrollY}px`;
-    
+
             document.addEventListener('click', handleOutsideClick);
         });
-    
+
         contextMenu.querySelectorAll('.context-menu-item').forEach(item => {
             item.addEventListener('click', closeContextMenu);
         });
