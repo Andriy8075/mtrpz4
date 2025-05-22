@@ -18,8 +18,34 @@ document.addEventListener('DOMContentLoaded', () => {
             sendButton.classList.remove('active');
         }
     }
+    function adjustTextareaHeight() {
+        messageInput.style.height = 'auto';
 
-    messageInput.addEventListener('input', updateSendButton);
+        if (messageInput.scrollHeight > 69) {
+            messageInput.style.height = Math.min(messageInput.scrollHeight, 150) + 'px';
+            if(Math.min(messageInput.scrollHeight, 150) == 150){
+                console.log("==")
+                messageInput.style.overflowY = 'auto';
+            }
+        } else {
+            messageInput.style.height = '48px';
+            messageInput.style.overflowY = 'hidden';
+        }
+
+        updateSendButton();
+    }
+
+    messageInput.addEventListener('input', adjustTextareaHeight);
+
+    // Обробка натискання Enter (відправка при Enter, перенос рядка при Shift+Enter)
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            if (messageInput.value.trim() !== '') {
+                messageForm.dispatchEvent(new Event('submit'));
+            }
+        }
+    });
 
     // Handle login
     loginBtn.addEventListener('click', (e) => {
@@ -108,6 +134,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         messagesContainer.appendChild(messageElement);
+        messageInput.value = '';
+        messageInput.style.height = '48px';
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
         displayContextMenu()
     }
