@@ -18,6 +18,20 @@ document.addEventListener('DOMContentLoaded', () => {
             sendButton.classList.remove('active');
         }
     }
+
+    function nl2br(str) {
+        return str.replace(/\n/g, '<br>');
+    }
+
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
     function adjustTextareaHeight() {
         messageInput.style.height = 'auto';
 
@@ -94,12 +108,13 @@ document.addEventListener('DOMContentLoaded', () => {
     messageForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const messageText = messageInput.value.trim();
+        const safeMessage = nl2br(escapeHtml(messageText));
 
-        if (messageText && socket) {
+        if (safeMessage && socket) {
             const message = {
                 type: 'message',
                 username: currentUser,
-                text: messageText,
+                text: safeMessage,
                 timestamp: new Date().toISOString()
             };
 
@@ -120,11 +135,10 @@ document.addEventListener('DOMContentLoaded', () => {
             messageElement.style.textAlign = 'center';
         } else {
             const time = new Date(message.timestamp).toLocaleTimeString();
+            console.log(message.text)
             messageElement.innerHTML = `
                 <div class="message received" id="message-container">
-                    <div class="message-bubble">
-                        ${message.text}
-                    </div>
+                    <div class="message-bubble">${message.text}</div>
                     <div class="message-info">
                     <span class="message-sender">${message.username}</span>
                     <span class="message-time">${time}</span>
