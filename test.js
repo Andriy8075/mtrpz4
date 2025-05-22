@@ -13,28 +13,23 @@ describe('Multi-Client WebSocket Chat Server', () => {
         for (const client of clients) {
             promises.push(new Promise((resolve) => {
                 let messagesCount = 0;
-                function shouldResolve() {
+                const incCountAndCheckForResolve = (data) => {
+                    messagesCount++;
                     if (messagesCount >= client.count) {
                         client.client.removeListener('message', incCountAndCheckForResolve);
-                        messagesCount = 0
-                        resolve()
+                        resolve();
                     }
-                }
-                incCountAndCheckForResolve = (data) => {
-                    messagesCount++;
-                    shouldResolve();
-                }
-                client.client.on('message', incCountAndCheckForResolve)
+                };
+                client.client.on('message', incCountAndCheckForResolve);
             }));
         }
-        return Promise.all(promises)
+        return Promise.all(promises);
     }
 
     beforeAll((done) => {
         httpServer = createServer();
         wss = new WebSocket.Server({ server: httpServer });
 
-        // Initialize with mock implementation similar to your actual server
         chatServer = new Server();
         Object.assign(chatServer, {
             wss,
@@ -58,156 +53,138 @@ describe('Multi-Client WebSocket Chat Server', () => {
     });
 
     afterAll((done) => {
-        wss.close();
-        httpServer.close(done);
+        // Закриваємо WebSocket сервер перед HTTP сервером
+        wss.close(() => {
+            httpServer.close(done);
+        });
     });
 
     afterEach(() => {
         jest.clearAllMocks();
     });
 
-    test('should handle multiple clients sending messages', async () => {
-        // Create three test clients
-        const client1 = new WebSocket(`ws://localhost:${port}`);
-        const client2 = new WebSocket(`ws://localhost:${port}`);
-        const client3 = new WebSocket(`ws://localhost:${port}`);
+    // ... (інші імпорти та початок describe залишаються без змін)
 
-        // Array to collect all messages received by all clients
-        const allMessages = [];
+test('should handle multiple clients sending messages', async () => {
+    const client1 = new WebSocket(`ws://localhost:${port}`);
+    const client2 = new WebSocket(`ws://localhost:${port}`);
+    const client3 = new WebSocket(`ws://localhost:${port}`);
 
-        // Wait for all clients to connect
-        await Promise.all([
-            new Promise((resolve) => client1.on('open', resolve)),
-            new Promise((resolve) => client2.on('open', resolve)),
-            new Promise((resolve) => client3.on('open', resolve))
-        ]);
+    const allMessages = [];
 
-        client1.on('message', (data) => allMessages.push({ client: 'client1', message: JSON.parse(data) }));
-        client2.on('message', (data) => allMessages.push({ client: 'client2', message: JSON.parse(data) }));
-        client3.on('message', (data) => allMessages.push({ client: 'client3', message: JSON.parse(data) }));
+    await Promise.all([
+        new Promise((resolve) => client1.on('open', resolve)),
+        new Promise((resolve) => client2.on('open', resolve)),
+        new Promise((resolve) => client3.on('open', resolve))
+    ]);
 
-        const joinMessageToAwait = awaitMessagesFrom(
-            {client: client1, count: 3},
-            {client: client2, count: 3},
-            {client: client3, count: 3}
-        );
+    client1.on('message', (data) => allMessages.push({ client: 'client1', message: JSON.parse(data) }));
+    client2.on('message', (data) => allMessages.push({ client: 'client2', message: JSON.parse(data) }));
+    client3.on('message', (data) => allMessages.push({ client: 'client3', message: JSON.parse(data) }));
 
-        // Have each client join with a unique username
-        client1.send(JSON.stringify({ type: 'join', username: 'Alice' }));
-        client2.send(JSON.stringify({ type: 'join', username: 'Bob' }));
-        client3.send(JSON.stringify({ type: 'join', username: 'Charlie' }));
+    const joinMessageToAwait = awaitMessagesFrom(
+        { client: client1, count: 3 },
+        { client: client2, count: 3 },
+        { client: client3, count: 3 }
+    );
 
-        // Wait for join messages to propagate
-        await joinMessageToAwait
+    client1.send(JSON.stringify({ type: 'join', username: 'Alice' }));
+    client2.send(JSON.stringify({ type: 'join', username: 'Bob' }));
+    client3.send(JSON.stringify({ type: 'join', username: 'Charlie' }));
 
-        // Send messages from each client
-        const message1 = { type: 'message', text: 'Hello from Alice', username: 'Alice', timestamp: new Date().toISOString() };
-        const message2 = { type: 'message', text: 'Hi from Bob', username: 'Bob', timestamp: new Date().toISOString() };
-        const message3 = { type: 'message', text: 'Greetings from Charlie', username: 'Charlie', timestamp: new Date().toISOString() };
+    await joinMessageToAwait;
 
-        const textMessagesToAwait = awaitMessagesFrom(
-            {client: client1, count: 3},
-            {client: client2, count: 3},
-            {client: client3, count: 3}
-        );
+    const message1 = { type: 'message', text: 'Hello from Alice', username: 'Alice', timestamp: new Date().toISOString() };
+    const message2 = { type: 'message', text: 'Hi from Bob', username: 'Bob', timestamp: new Date().toISOString() };
+    const message3 = { type: 'message', text: 'Greetings from Charlie', username: 'Charlie', timestamp: new Date().toISOString() };
 
-        client1.send(JSON.stringify(message1));
-        client2.send(JSON.stringify(message2));
-        client3.send(JSON.stringify(message3));
+    const textMessagesToAwait = awaitMessagesFrom(
+        { client: client1, count: 3 },
+        { client: client2, count: 3 },
+        { client: client3, count: 3 }
+    );
 
-        await textMessagesToAwait
+    client1.send(JSON.stringify(message1));
+    client2.send(JSON.stringify(message2));
+    client3.send(JSON.stringify(message3));
 
-        // Wait for all messages to propagate
-        await new Promise((resolve) => setTimeout(resolve, 200));
+    await textMessagesToAwait;
 
-        // Verify join notifications were received by all clients
-        const joinMessages = allMessages.filter(m => m.message.text.includes('has joined'));
-        expect(joinMessages).toHaveLength(9); // 3 joins × 3 clients
+    const joinMessages = allMessages.filter(m => m.message.text.includes('has joined'));
+    expect(joinMessages).toHaveLength(9); // 3 joins × 3 clients
 
-        // Verify each client received all chat messages
-        const aliceMessages = allMessages.filter(m => m.message.username === 'Alice' && m.message.type === 'message');
-        const bobMessages = allMessages.filter(m => m.message.username === 'Bob' && m.message.type === 'message');
-        const charlieMessages = allMessages.filter(m => m.message.username === 'Charlie' && m.message.type === 'message');
+    const aliceMessages = allMessages.filter(m => m.message.username === 'Alice' && m.message.type === 'message');
+    const bobMessages = allMessages.filter(m => m.message.username === 'Bob' && m.message.type === 'message');
+    const charlieMessages = allMessages.filter(m => m.message.username === 'Charlie' && m.message.type === 'message');
 
+    expect(aliceMessages).toHaveLength(3);
+    expect(bobMessages).toHaveLength(3);
+    expect(charlieMessages).toHaveLength(3);
 
-        //each client got 3 messages: 1 from themselves and 2 from others
-        expect(aliceMessages).toHaveLength(3);
-        expect(bobMessages).toHaveLength(3);
-        expect(charlieMessages).toHaveLength(3);
+    expect(aliceMessages.every(m => m.message.text === 'Hello from Alice')).toBe(true);
+    expect(bobMessages.every(m => m.message.text === 'Hi from Bob')).toBe(true);
+    expect(charlieMessages.every(m => m.message.text === 'Greetings from Charlie')).toBe(true);
 
-        // Verify message content
-        expect(aliceMessages.every(m => m.message.text === 'Hello from Alice')).toBe(true);
-        expect(bobMessages.every(m => m.message.text === 'Hi from Bob')).toBe(true);
-        expect(charlieMessages.every(m => m.message.text === 'Greetings from Charlie')).toBe(true);
+    client1.close();
+    client2.close();
+    client3.close();
+});
 
-        // Close all clients
-        client1.close();
-        client2.close();
-        client3.close();
+test('should not receive messages after leaving', async () => {
+    const client1 = new WebSocket(`ws://localhost:${port}`);
+    const client2 = new WebSocket(`ws://localhost:${port}`);
+
+    await Promise.all([
+        new Promise((resolve) => client1.on('open', resolve)),
+        new Promise((resolve) => client2.on('open', resolve))
+    ]);
+
+    const joinPromises = awaitMessagesFrom(
+        { client: client1, count: 2 },
+        { client: client2, count: 2 },
+    );
+
+    client1.send(JSON.stringify({ type: 'join', username: 'Leaver' }));
+    client2.send(JSON.stringify({ type: 'join', username: 'Observer' }));
+
+    await joinPromises;
+
+    const leaverMessages = [];
+    client1.on('message', (data) => {
+        leaverMessages.push(JSON.parse(data));
     });
 
-    test('should not receive messages after leaving', async () => {
-        const client1 = new WebSocket(`ws://localhost:${port}`);
-        const client2 = new WebSocket(`ws://localhost:${port}`);
+    const messagePromises = awaitMessagesFrom(
+        { client: client1, count: 1 },
+        { client: client2, count: 1 },
+    );
 
-        await Promise.all([
-            new Promise((resolve) => client1.on('open', resolve)),
-            new Promise((resolve) => client2.on('open', resolve))
-        ]);
+    client1.send(JSON.stringify({
+        type: 'message',
+        text: 'Before leaving',
+        username: 'Leaver',
+        timestamp: new Date().toISOString()
+    }));
 
-        const joinPromises = awaitMessagesFrom(
-            {client: client1, count: 2},
-            {client: client2, count: 2},
-        )
-        // Client1 will leave, client2 will monitor messages
-        client1.send(JSON.stringify({ type: 'join', username: 'Leaver' }));
-        client2.send(JSON.stringify({ type: 'join', username: 'Observer' }));
+    await messagePromises;
 
-        await joinPromises;
+    const leavePromise = awaitMessagesFrom({ client: client2, count: 1 });
+    client1.close();
+    await leavePromise;
 
-        const leaverMessages = [];
-        client1.on('message', (data) => {
-            leaverMessages.push(JSON.parse(data));
-        });
+    const afterLeavingMessagePromise = awaitMessagesFrom({ client: client2, count: 1 });
+    client2.send(JSON.stringify({
+        type: 'message',
+        text: 'After leaver left',
+        username: 'Observer',
+        timestamp: new Date().toISOString()
+    }));
 
-        // Client1 sends a message
-        const messagePromises = awaitMessagesFrom(
-            {client: client1, count: 1},
-            {client: client2, count: 1},
-        );
+    await afterLeavingMessagePromise;
 
-        client1.send(JSON.stringify({
-            type: 'message',
-            text: 'Before leaving',
-            username: 'Leaver',
-            timestamp: new Date().toISOString()
-        }));
+    expect(leaverMessages).toHaveLength(1);
+    expect(leaverMessages[0].text).toBe('Before leaving');
 
-        // Wait for message to be received
-        await messagePromises;
-
-        // Client1 leaves
-        const leavePromise = awaitMessagesFrom({client: client2, count: 1});
-        client1.close();
-
-        // Wait for leave to be processed
-        await leavePromise;
-
-        const afterLeavingMessagePromise = awaitMessagesFrom({client: client2, count: 1});
-        // Client2 sends a message (which Leaver shouldn't receive)
-        client2.send(JSON.stringify({
-            type: 'message',
-            text: 'After leaver left',
-            username: 'Observer',
-            timestamp: new Date().toISOString()
-        }));
-
-        await afterLeavingMessagePromise;
-
-        // Verify Leaver only received the first message (the second was after he left)
-        expect(leaverMessages).toHaveLength(1);
-        expect(leaverMessages[0].text).toBe('Before leaving');
-
-        client2.close();
+    client2.close();
     });
 });
