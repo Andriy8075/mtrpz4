@@ -8,6 +8,7 @@ class ChatServer {
         this.server = http.createServer(this.handleRequest.bind(this));
         this.wss = new WebSocket.Server({ server: this.server });
         this.clients = new Map();
+        this.messages = []; // Store messages for editing/deleting
 
         this.setupWebSocketHandlers();
     }
@@ -48,7 +49,11 @@ class ChatServer {
                     if (data.type === 'join') {
                         this.handleJoin(data, ws);
                     } else if (data.type === 'message') {
-                        this.broadcast(data);
+                        this.handleMessage(data);
+                    } else if (data.type === 'delete') {
+                        this.handleDelete(data);
+                    } else if (data.type === 'edit') {
+                        this.handleEdit(data);
                     }
                 } catch (error) {
                     console.error('Error parsing message:', error);
@@ -68,6 +73,55 @@ class ChatServer {
             text: `${data.username} has joined the chat`,
             timestamp: new Date().toISOString()
         });
+    }
+
+    handleMessage(data) {
+        // Add unique ID to the message
+        const messageWithId = {
+            ...data,
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5)
+        };
+        this.messages.push(messageWithId);
+        this.broadcast(messageWithId);
+    }
+
+    handleDelete(data) {
+        const messageIndex = this.messages.findIndex(msg => msg.id === data.messageId);
+        if (messageIndex !== -1) {
+            // Check if the user is the author of the message
+            if (this.messages[messageIndex].username === data.username) {
+                this.messages.splice(messageIndex, 1);
+                this.broadcast({
+                    type: 'delete',
+                    messageId: data.messageId,
+                    username: data.username
+                });
+            } else {
+                console.log(`User ${data.username} attempted to delete message they don't own`);
+            }
+        }
+    }
+
+    handleEdit(data) {
+        const messageIndex = this.messages.findIndex(msg => msg.id === data.messageId);
+        if (messageIndex !== -1) {
+            // Check if the user is the author of the message
+            if (this.messages[messageIndex].username === data.username) {
+                this.messages[messageIndex].text = data.newText;
+                this.messages[messageIndex].edited = true;
+                this.messages[messageIndex].editTimestamp = new Date().toISOString();
+
+                this.broadcast({
+                    type: 'edit',
+                    messageId: data.messageId,
+                    newText: data.newText,
+                    username: data.username,
+                    editTimestamp: new Date().toISOString()
+                });
+            } else {
+                console.log(`User ${data.username} attempted to edit message they don't own`);
+            }
+        }
     }
 
     handleDisconnect(ws) {
@@ -91,7 +145,6 @@ class ChatServer {
 
     broadcast(message) {
         const jsonMessage = JSON.stringify(message);
-        console.log(message)
         for (const client of this.wss.clients) {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(jsonMessage);
