@@ -41,12 +41,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (messageInput.scrollHeight > 69) {
             messageInput.style.height = Math.min(messageInput.scrollHeight, 150) + 'px';
             if(Math.min(messageInput.scrollHeight, 150) == 150){
-                console.log("==")
                 messageInput.style.overflowY = 'auto';
             }
         } else {
             messageInput.style.height = '48px';
-            messageInput.style.overflowY = 'hidden';
+            // messageInput.style.overflowY = 'hidden';
         }
 
         updateSendButton();
@@ -136,6 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             messageInput.value = '';
+            adjustTextareaHeight()
             updateSendButton();
         }
     });
@@ -162,7 +162,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayMessage(message) {
         const messageElement = document.createElement('div');
         messageElement.className = 'message';
-        messageElement.dataset.id = message.id;
 
         const time = new Date(message.timestamp).toLocaleTimeString();
         const isCurrentUser = message.username === currentUser;
@@ -174,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         messageElement.innerHTML = `
-            <div class="message ${isCurrentUser ? 'sent' : 'received'}">
+            <div class="message ${isCurrentUser ? 'sent' : 'received'}" data-id="${message.id}">
                 <div class="message-bubble">${message.text}</div>
                 <div class="message-info">
                     <span class="message-sender">${message.username}</span>
@@ -223,10 +222,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setupContextMenu(messageElement, message) {
         const isCurrentUser = message.username === currentUser;
-
+    
         messageElement.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-
+    
             // Only show edit/delete for current user's messages
             if (isCurrentUser) {
                 contextMenu.querySelector('[data-action="edit"]').style.display = 'block';
@@ -235,21 +234,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 contextMenu.querySelector('[data-action="edit"]').style.display = 'none';
                 contextMenu.querySelector('[data-action="delete"]').style.display = 'none';
             }
-
+    
             positionContextMenu(e, contextMenu);
+            
+            // Зберігаємо ID повідомлення в контекстному меню
+            contextMenu.dataset.messageId = message.id;
         });
-
-        // Handle context menu actions
+        }
+    
+        // Виносимо обробник кліку за межі setupContextMenu
         contextMenu.querySelectorAll('.context-item').forEach(item => {
-            console.log('adding event listener')
             item.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation(); // Додаємо зупинку propagation
+        
                 const action = e.target.dataset.action;
-                console.log('click'); // !!! all listeners activated (hear click)
+                const messageId = contextMenu.dataset.messageId;
+                
+                // Знаходимо повідомлення за ID
+                const messageElement = document.querySelector(`.message[data-id="${messageId}"]`);
+                if (!messageElement) return;
+                
+                const message = {
+                    id: messageId,
+                    username: messageElement.querySelector('.message-sender').textContent,
+                    text: messageElement.querySelector('.message-bubble').innerHTML
+                };
+        
                 handleContextAction(action, message);
                 contextMenu.style.display = 'none';
             });
-        });
-    }
+    });
 
     function positionContextMenu(e, menu) {
         menu.style.display = 'flex';
@@ -267,8 +282,12 @@ document.addEventListener('DOMContentLoaded', () => {
         switch (action) {
             case 'edit':
                 isEditing = true;
+                adjustTextareaHeight();
+    
+                const selectedMessageText = message.text;
+                messageInput.value = selectedMessageText.replace(/<br\s*\/?>/gi, '\n');
                 selectedMessageId = message.id;
-                messageInput.value = message.text.replace(/<br\s*\/?>/gi, '\n');
+    
                 messageInput.focus();
                 break;
             case 'delete':
