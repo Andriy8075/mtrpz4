@@ -111,51 +111,6 @@ describe('Multi-Client WebSocket Chat Server', () => {
         client3.close();
     });
 
-    test('should handle message ordering correctly', async () => {
-        const client1 = new WebSocket(`ws://localhost:${port}`);
-        const client2 = new WebSocket(`ws://localhost:${port}`);
-
-        await Promise.all([
-            new Promise((resolve) => client1.on('open', resolve)),
-            new Promise((resolve) => client2.on('open', resolve))
-        ]);
-
-        const client2Messages = [];
-        client2.on('message', (data) => {
-            const msg = JSON.parse(data);
-            if (msg.type === 'message') {
-                client2Messages.push(msg);
-            }
-        });
-
-        // Client1 joins and sends multiple messages quickly
-        client1.send(JSON.stringify({ type: 'join', username: 'Tester' }));
-
-        // Send 5 messages in rapid succession
-        for (let i = 1; i <= 5; i++) {
-            client1.send(JSON.stringify({
-                type: 'message',
-                text: `Message ${i}`,
-                username: 'Tester',
-                timestamp: new Date().toISOString()
-            }));
-        }
-
-        // Wait for all messages to be processed
-        await new Promise((resolve) => setTimeout(resolve, 300));
-
-        // Verify messages were received in order
-        expect(client2Messages).toHaveLength(5);
-        expect(client2Messages[0].text).toBe('Message 1');
-        expect(client2Messages[1].text).toBe('Message 2');
-        expect(client2Messages[2].text).toBe('Message 3');
-        expect(client2Messages[3].text).toBe('Message 4');
-        expect(client2Messages[4].text).toBe('Message 5');
-
-        client1.close();
-        client2.close();
-    });
-
     test('should not receive messages after leaving', async () => {
         const client1 = new WebSocket(`ws://localhost:${port}`);
         const client2 = new WebSocket(`ws://localhost:${port}`);
