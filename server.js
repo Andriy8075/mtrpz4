@@ -7,10 +7,16 @@ class ChatServer {
     constructor() {
         this.server = http.createServer(this.handleRequest.bind(this));
         this.wss = new WebSocket.Server({ server: this.server });
-        this.clients = new Map();
-        this.messages = []; // Store messages for editing/deleting
-
+        this.clientMessages = new WeakMap(); // ws -> messages[]
         this.setupWebSocketHandlers();
+    }
+
+    validateMessageText(text) {
+        return text && typeof text === 'string' && text.trim() !== '' && text.length <= 1024;
+    }
+
+    validateUsername(username) {
+        return username && typeof username === 'string' && username.trim() !== '' && username.length <= 16;
     }
 
     handleRequest(req, res) {
@@ -41,6 +47,10 @@ class ChatServer {
     setupWebSocketHandlers() {
         this.wss.on('connection', (ws) => {
             console.log('New client connected');
+            this.clientMessages.set(ws, []);
+
+            // Store username directly on the ws object
+            ws.username = null;
 
             ws.on('message', (message) => {
                 try {
@@ -49,11 +59,11 @@ class ChatServer {
                     if (data.type === 'join') {
                         this.handleJoin(data, ws);
                     } else if (data.type === 'message') {
-                        this.handleMessage(data);
+                        this.handleMessage(data, ws);
                     } else if (data.type === 'delete') {
-                        this.handleDelete(data);
+                        this.handleDelete(data, ws);
                     } else if (data.type === 'edit') {
-                        this.handleEdit(data);
+                        this.handleEdit(data, ws);
                     }
                 } catch (error) {
                     console.error('Error parsing message:', error);
@@ -62,12 +72,15 @@ class ChatServer {
 
             ws.on('close', () => {
                 this.handleDisconnect(ws);
+                this.clientMessages.delete(ws);
             });
         });
     }
 
     handleJoin(data, ws) {
-        this.clients.set(data.username, ws);
+        const validated = this.validateUsername(data.username)
+        if (!validated) return;
+        ws.username = data.username;
         this.broadcast({
             type: 'system',
             text: `${data.username} has joined the chat`,
@@ -75,69 +88,75 @@ class ChatServer {
         });
     }
 
-    handleMessage(data) {
-        // Add unique ID to the message
+    handleMessage(data, ws) {
+        if (!ws.username) return; // Only allow messages from joined users
+        const validated = this.validateMessageText(data.text);
+        if(!validated) return;
+        console.log('ertgethrth');
         const messageWithId = {
-            ...data,
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5)
+            type: 'message',
+            text: data.text,
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            timestamp: new Date().toISOString(),
+            username: ws.username,
         };
-        this.messages.push(messageWithId);
+
+        const messages = this.clientMessages.get(ws);
+        messages.push(messageWithId);
         this.broadcast(messageWithId);
     }
 
-    handleDelete(data) {
-        const messageIndex = this.messages.findIndex(msg => msg.id === data.messageId);
+    handleDelete(data, ws) {
+        if (!ws.username) return;
+
+        const messages = this.clientMessages.get(ws);
+        if (!messages) return;
+
+        const messageIndex = messages.findIndex(msg => msg.id === data.messageId);
         if (messageIndex !== -1) {
-            // Check if the user is the author of the message
-            if (this.messages[messageIndex].username === data.username) {
-                this.messages.splice(messageIndex, 1);
-                this.broadcast({
-                    type: 'delete',
-                    messageId: data.messageId,
-                    username: data.username
-                });
-            } else {
-                console.log(`User ${data.username} attempted to delete message they don't own`);
-            }
+            messages.splice(messageIndex, 1);
+            this.broadcast({
+                type: 'delete',
+                messageId: data.messageId,
+                username: ws.username
+            });
+        } else {
+            console.log(`User ${ws.username} attempted to delete message they don't own`);
         }
     }
 
-    handleEdit(data) {
-        const messageIndex = this.messages.findIndex(msg => msg.id === data.messageId);
-        if (messageIndex !== -1) {
-            // Check if the user is the author of the message
-            if (this.messages[messageIndex].username === data.username) {
-                this.messages[messageIndex].text = data.newText;
-                this.messages[messageIndex].edited = true;
-                this.messages[messageIndex].editTimestamp = new Date().toISOString();
+    handleEdit(data, ws) {
+        if (!ws.username) return;
 
-                this.broadcast({
-                    type: 'edit',
-                    messageId: data.messageId,
-                    newText: data.newText,
-                    username: data.username,
-                    editTimestamp: new Date().toISOString()
-                });
-            } else {
-                console.log(`User ${data.username} attempted to edit message they don't own`);
-            }
+        const messages = this.clientMessages.get(ws);
+        if (!messages) return;
+
+        const validated = this.validateMessageText(data.newText);
+        if(!validated) return;
+
+        const messageIndex = messages.findIndex(msg => msg.id === data.messageId);
+        if (messageIndex !== -1) {
+            messages[messageIndex].text = data.newText;
+            messages[messageIndex].edited = true;
+            messages[messageIndex].editTimestamp = new Date().toISOString();
+
+            this.broadcast({
+                type: 'edit',
+                messageId: data.messageId,
+                newText: data.newText,
+                username: ws.username,
+                editTimestamp: new Date().toISOString()
+            });
+        } else {
+            console.log(`User ${ws.username} attempted to edit message they don't own`);
         }
     }
 
     handleDisconnect(ws) {
-        let username;
-        for (const [name, client] of this.clients.entries()) {
-            if (client === ws) {
-                username = name;
-                this.clients.delete(name);
-                break;
-            }
-        }
-
-        if (username) {
+        if (ws.username) {
             this.broadcast({
                 type: 'system',
-                text: `${username} has left the chat`,
+                text: `${ws.username} has left the chat`,
                 timestamp: new Date().toISOString()
             });
         }
@@ -160,7 +179,6 @@ class ChatServer {
     }
 }
 
-// Only start the server if this is the main module
 if (require.main === module) {
     const PORT = process.env.PORT || 8080;
     new ChatServer().listen(PORT);
