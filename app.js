@@ -119,7 +119,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     type: 'edit',
                     messageId: selectedMessageId,
                     newText: safeMessage,
-                    username: currentUser
                 }));
                 isEditing = false;
                 selectedMessageId = null;
@@ -127,7 +126,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Send new message
                 const message = {
                     type: 'message',
-                    username: currentUser,
                     text: safeMessage,
                     timestamp: new Date().toISOString()
                 };
@@ -295,7 +293,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     socket.send(JSON.stringify({
                         type: 'delete',
                         messageId: message.id,
-                        username: currentUser
                     }));
                 }
                 break;
