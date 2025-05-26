@@ -63,13 +63,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Handle login
-    loginBtn.addEventListener('click', (e) => {
-        e.preventDefault();
+    // Функція для обробки логіну
+    function handleLogin() {
         const username = usernameInput.value.trim();
+        const safeUsername = nl2br(escapeHtml(username));
 
-        if (username) {
-            currentUser = username;
+        if (safeUsername) {
+            currentUser = safeUsername;
 
             // Initialize WebSocket connection
             socket = new WebSocket(`ws://${window.location.hostname}:8080`);
@@ -103,6 +103,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('WebSocket error:', error);
                 displaySystemMessage('Connection error occurred.');
             };
+        }
+    }
+
+    // Обробник для кнопки
+    loginBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleLogin();
+    });
+
+    // Обробник для клавіші Enter в полі вводу
+    usernameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleLogin();
         }
     });
 
@@ -170,9 +184,11 @@ document.addEventListener('DOMContentLoaded', () => {
             editedIndicator = `<span class="edited-indicator">(edited at ${editTime})</span>`;
         }
 
+        const safeMessage = nl2br(escapeHtml(message.text));
+
         messageElement.innerHTML = `
             <div class="message ${isCurrentUser ? 'sent' : 'received'}" data-id="${message.id}">
-                <div class="message-bubble">${message.text}</div>
+                <div class="message-bubble">${safeMessage}</div>
                 <div class="message-info">
                     <span class="message-sender">${message.username}</span>
                     <span class="message-time">${time} ${editedIndicator}</span>
@@ -282,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 isEditing = true;
                 adjustTextareaHeight();
     
-                const selectedMessageText = message.text;
+                const selectedMessageText = nl2br(escapeHtml(message.text));
                 messageInput.value = selectedMessageText.replace(/<br\s*\/?>/gi, '\n');
                 selectedMessageId = message.id;
     
