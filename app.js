@@ -66,10 +66,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Функція для обробки логіну
     function handleLogin() {
         const username = usernameInput.value.trim();
-        const safeUsername = nl2br(escapeHtml(username));
 
-        if (safeUsername) {
-            currentUser = safeUsername;
+        if (username) {
+            currentUser = username;
 
             // Initialize WebSocket connection
             socket = new WebSocket(`ws://${window.location.hostname}:8080`);
@@ -124,15 +123,14 @@ document.addEventListener('DOMContentLoaded', () => {
     messageForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const messageText = messageInput.value.trim();
-        const safeMessage = nl2br(escapeHtml(messageText));
 
-        if (safeMessage && socket) {
+        if (messageText && socket) {
             if (isEditing && selectedMessageId) {
                 // Send edit message
                 socket.send(JSON.stringify({
                     type: 'edit',
                     messageId: selectedMessageId,
-                    newText: safeMessage,
+                    newText: messageText,
                 }));
                 isEditing = false;
                 selectedMessageId = null;
@@ -140,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Send new message
                 const message = {
                     type: 'message',
-                    text: safeMessage,
+                    text: messageText,
                     timestamp: new Date().toISOString()
                 };
                 socket.send(JSON.stringify(message));
@@ -184,13 +182,15 @@ document.addEventListener('DOMContentLoaded', () => {
             editedIndicator = `<span class="edited-indicator">(edited at ${editTime})</span>`;
         }
 
+        const safeUsername = nl2br(escapeHtml(message.username));
+
         const safeMessage = nl2br(escapeHtml(message.text));
 
         messageElement.innerHTML = `
             <div class="message ${isCurrentUser ? 'sent' : 'received'}" data-id="${message.id}">
                 <div class="message-bubble">${safeMessage}</div>
                 <div class="message-info">
-                    <span class="message-sender">${message.username}</span>
+                    <span class="message-sender">${safeUsername}</span>
                     <span class="message-time">${time} ${editedIndicator}</span>
                 </div>
             </div>
@@ -236,10 +236,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setupContextMenu(messageElement, message) {
         const isCurrentUser = message.username === currentUser;
-    
+
         messageElement.addEventListener('contextmenu', (e) => {
             e.preventDefault();
-    
+
             // Only show edit/delete for current user's messages
             if (isCurrentUser) {
                 contextMenu.querySelector('[data-action="edit"]').style.display = 'block';
@@ -248,36 +248,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 contextMenu.querySelector('[data-action="edit"]').style.display = 'none';
                 contextMenu.querySelector('[data-action="delete"]').style.display = 'none';
             }
-    
+
             positionContextMenu(e, contextMenu);
-            
+
             // Зберігаємо ID повідомлення в контекстному меню
             contextMenu.dataset.messageId = message.id;
         });
-        }
-    
-        // Виносимо обробник кліку за межі setupContextMenu
-        contextMenu.querySelectorAll('.context-item').forEach(item => {
-            item.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation(); // Додаємо зупинку propagation
-        
-                const action = e.target.dataset.action;
-                const messageId = contextMenu.dataset.messageId;
-                
-                // Знаходимо повідомлення за ID
-                const messageElement = document.querySelector(`.message[data-id="${messageId}"]`);
-                if (!messageElement) return;
-                
-                const message = {
-                    id: messageId,
-                    username: messageElement.querySelector('.message-sender').textContent,
-                    text: messageElement.querySelector('.message-bubble').innerHTML
-                };
-        
-                handleContextAction(action, message);
-                contextMenu.style.display = 'none';
-            });
+    }
+
+    // Виносимо обробник кліку за межі setupContextMenu
+    contextMenu.querySelectorAll('.context-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // Додаємо зупинку propagation
+
+            const action = e.target.dataset.action;
+            const messageId = contextMenu.dataset.messageId;
+
+            // Знаходимо повідомлення за ID
+            const messageElement = document.querySelector(`.message[data-id="${messageId}"]`);
+            if (!messageElement) return;
+
+            const message = {
+                id: messageId,
+                username: messageElement.querySelector('.message-sender').textContent,
+                text: messageElement.querySelector('.message-bubble').innerHTML
+            };
+
+            handleContextAction(action, message);
+            contextMenu.style.display = 'none';
+        });
     });
 
     function positionContextMenu(e, menu) {
@@ -297,11 +297,11 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'edit':
                 isEditing = true;
                 adjustTextareaHeight();
-    
+
                 const selectedMessageText = nl2br(escapeHtml(message.text));
                 messageInput.value = selectedMessageText.replace(/<br\s*\/?>/gi, '\n');
                 selectedMessageId = message.id;
-    
+
                 messageInput.focus();
                 break;
             case 'delete':
