@@ -315,10 +315,6 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'copy':
                 navigator.clipboard.writeText(message.text.replace(/<br\s*\/?>/gi, '\n'));
                 break;
-            case 'reply':
-                messageInput.value = `@${message.username} `;
-                messageInput.focus();
-                break;
         }
     }
 });
