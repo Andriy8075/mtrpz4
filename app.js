@@ -7,9 +7,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const messageForm = document.getElementById('message-form');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.querySelector('.send-button');
+    const contextMenu = document.getElementById('context-menu');
 
     let socket;
     let currentUser;
+    let selectedMessageId = null;
+    let isEditing = false;
 
     function updateSendButton() {
         if (messageInput.value.trim() !== '') {
@@ -38,12 +41,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (messageInput.scrollHeight > 69) {
             messageInput.style.height = Math.min(messageInput.scrollHeight, 150) + 'px';
             if(Math.min(messageInput.scrollHeight, 150) == 150){
-                console.log("==")
                 messageInput.style.overflowY = 'auto';
             }
         } else {
             messageInput.style.height = '48px';
-            messageInput.style.overflowY = 'hidden';
+            // messageInput.style.overflowY = 'hidden';
         }
 
         updateSendButton();
@@ -51,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     messageInput.addEventListener('input', adjustTextareaHeight);
 
-    // Обробка натискання Enter (відправка при Enter, перенос рядка при Shift+Enter)
+    // Handle Enter key (send on Enter, new line on Shift+Enter)
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -61,9 +63,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Handle login
-    loginBtn.addEventListener('click', (e) => {
-        e.preventDefault();
+    // Функція для обробки логіну
+    function handleLogin() {
         const username = usernameInput.value.trim();
 
         if (username) {
@@ -89,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             socket.onmessage = (event) => {
                 const message = JSON.parse(event.data);
-                displayMessage(message);
+                handleServerMessage(message);
             };
 
             socket.onclose = () => {
@@ -102,108 +103,222 @@ document.addEventListener('DOMContentLoaded', () => {
                 displaySystemMessage('Connection error occurred.');
             };
         }
+    }
+
+    // Обробник для кнопки
+    loginBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleLogin();
+    });
+
+    // Обробник для клавіші Enter в полі вводу
+    usernameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleLogin();
+        }
     });
 
     // Handle message submission
     messageForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const messageText = messageInput.value.trim();
-        const safeMessage = nl2br(escapeHtml(messageText));
 
-        if (safeMessage && socket) {
-            const message = {
-                type: 'message',
-                username: currentUser,
-                text: safeMessage,
-                timestamp: new Date().toISOString()
-            };
+        if (messageText && socket) {
+            if (isEditing && selectedMessageId) {
+                // Send edit message
+                socket.send(JSON.stringify({
+                    type: 'edit',
+                    messageId: selectedMessageId,
+                    newText: messageText,
+                }));
+                isEditing = false;
+                selectedMessageId = null;
+            } else {
+                // Send new message
+                const message = {
+                    type: 'message',
+                    text: messageText,
+                    timestamp: new Date().toISOString()
+                };
+                socket.send(JSON.stringify(message));
+            }
 
-            socket.send(JSON.stringify(message));
             messageInput.value = '';
+            adjustTextareaHeight()
             updateSendButton();
         }
     });
 
-    // Display a message in the chat
+    function handleServerMessage(message) {
+        switch (message.type) {
+            case 'system':
+                displaySystemMessage(message.text);
+                break;
+            case 'message':
+                displayMessage(message);
+                break;
+            case 'delete':
+                removeMessage(message.messageId);
+                break;
+            case 'edit':
+                updateMessage(message);
+                break;
+            default:
+                console.log('Unknown message type:', message.type);
+        }
+    }
+
     function displayMessage(message) {
         const messageElement = document.createElement('div');
         messageElement.className = 'message';
 
-        if (message.type === 'system') {
-            messageElement.innerHTML = `<em>${message.text}</em>`;
-            messageElement.style.color = '#666';
-            messageElement.style.textAlign = 'center';
-        } else {
-            const time = new Date(message.timestamp).toLocaleTimeString();
-            console.log(message.text)
-            messageElement.innerHTML = `
-                <div class="message received" id="message-container">
-                    <div class="message-bubble">${message.text}</div>
-                    <div class="message-info">
-                    <span class="message-sender">${message.username}</span>
-                    <span class="message-time">${time}</span>
-                    </div>
-                </div>
-            `;
+        const time = new Date(message.timestamp).toLocaleTimeString();
+        const isCurrentUser = message.username === currentUser;
+
+        let editedIndicator = '';
+        if (message.edited) {
+            const editTime = new Date(message.editTimestamp).toLocaleTimeString();
+            editedIndicator = `<span class="edited-indicator">(edited at ${editTime})</span>`;
         }
+
+        const safeUsername = nl2br(escapeHtml(message.username));
+
+        const safeMessage = nl2br(escapeHtml(message.text));
+
+        messageElement.innerHTML = `
+            <div class="message ${isCurrentUser ? 'sent' : 'received'}" data-id="${message.id}">
+                <div class="message-bubble">${safeMessage}</div>
+                <div class="message-info">
+                    <span class="message-sender">${safeUsername}</span>
+                    <span class="message-time">${time} ${editedIndicator}</span>
+                </div>
+            </div>
+        `;
 
         messagesContainer.appendChild(messageElement);
-        messageInput.value = '';
-        messageInput.style.height = '48px';
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        displayContextMenu()
+
+        // Add context menu functionality
+        setupContextMenu(messageElement, message);
     }
 
-    // Display system messages
-    function displaySystemMessage(text) {
-        displayMessage({
-            type: 'system',
-            text: text,
-            timestamp: new Date().toISOString()
-        });
+    function removeMessage(messageId) {
+        const messageElement = document.querySelector(`.message[data-id="${messageId}"]`);
+        if (messageElement) {
+            messageElement.remove();
+        }
     }
 
-    // Display contextMenu
-    function displayContextMenu() {
-        const message = document.getElementById('message-container');
-        const contextMenu = document.getElementById('context-menu');
+    function updateMessage(message) {
+        const messageElement = document.querySelector(`.message[data-id="${message.messageId}"]`);
+        if (messageElement) {
+            const bubble = messageElement.querySelector('.message-bubble');
+            const timeElement = messageElement.querySelector('.message-time');
 
-        if (!message || !contextMenu) {
-            console.error('Не знайдено елемент message-container або context-menu');
-            return;
-        }
-
-        function closeContextMenu() {
-            contextMenu.style.display = "none";
-            document.removeEventListener('click', handleOutsideClick);
-        }
-
-        function handleOutsideClick(e) {
-            if (!contextMenu.contains(e.target) && e.target !== message) {
-                closeContextMenu();
+            if (bubble) bubble.innerHTML = message.newText;
+            if (timeElement) {
+                const originalTime = timeElement.textContent.split(' ')[0];
+                timeElement.innerHTML = `${originalTime} <span class="edited-indicator">(edited at ${new Date(message.editTimestamp).toLocaleTimeString()})</span>`;
             }
         }
+    }
 
-        message.addEventListener('click', (e) => {
-            e.stopPropagation();
+    function displaySystemMessage(text) {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'system-message';
+        messageElement.innerHTML = `<em>${text}</em>`;
+        messageElement.style.color = '#666';
+        messageElement.style.textAlign = 'center';
+        messagesContainer.appendChild(messageElement);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
 
-            document.querySelectorAll('.context-menu').forEach(menu => {
-                if (menu !== contextMenu) menu.style.display = "none";
-            });
+    function setupContextMenu(messageElement, message) {
+        const isCurrentUser = message.username === currentUser;
 
-            const position = message.getBoundingClientRect();
-            const scrollX = window.scrollX || document.documentElement.scrollLeft;
-            const scrollY = window.scrollY || document.documentElement.scrollTop;
+        messageElement.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
 
-            contextMenu.style.display = "flex";
-            contextMenu.style.left = `${position.right + scrollX + 10}px`;
-            contextMenu.style.top = `${position.bottom + scrollY}px`;
+            // Only show edit/delete for current user's messages
+            if (isCurrentUser) {
+                contextMenu.querySelector('[data-action="edit"]').style.display = 'block';
+                contextMenu.querySelector('[data-action="delete"]').style.display = 'block';
+            } else {
+                contextMenu.querySelector('[data-action="edit"]').style.display = 'none';
+                contextMenu.querySelector('[data-action="delete"]').style.display = 'none';
+            }
 
-            document.addEventListener('click', handleOutsideClick);
+            positionContextMenu(e, contextMenu);
+
+            // Зберігаємо ID повідомлення в контекстному меню
+            contextMenu.dataset.messageId = message.id;
         });
+    }
 
-        contextMenu.querySelectorAll('.context-menu-item').forEach(item => {
-            item.addEventListener('click', closeContextMenu);
+    // Виносимо обробник кліку за межі setupContextMenu
+    contextMenu.querySelectorAll('.context-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // Додаємо зупинку propagation
+
+            const action = e.target.dataset.action;
+            const messageId = contextMenu.dataset.messageId;
+
+            // Знаходимо повідомлення за ID
+            const messageElement = document.querySelector(`.message[data-id="${messageId}"]`);
+            if (!messageElement) return;
+
+            const message = {
+                id: messageId,
+                username: messageElement.querySelector('.message-sender').textContent,
+                text: messageElement.querySelector('.message-bubble').innerHTML
+            };
+
+            handleContextAction(action, message);
+            contextMenu.style.display = 'none';
         });
+    });
+
+    function positionContextMenu(e, menu) {
+        menu.style.display = 'flex';
+        menu.style.left = `${e.pageX}px`;
+        menu.style.top = `${e.pageY}px`;
+
+        // Hide menu when clicking elsewhere
+        document.addEventListener('click', function hideMenu() {
+            menu.style.display = 'none';
+            document.removeEventListener('click', hideMenu);
+        }, { once: true });
+    }
+
+    function handleContextAction(action, message) {
+        switch (action) {
+            case 'edit':
+                isEditing = true;
+                adjustTextareaHeight();
+
+                const selectedMessageText = nl2br(escapeHtml(message.text));
+                messageInput.value = selectedMessageText.replace(/<br\s*\/?>/gi, '\n');
+                selectedMessageId = message.id;
+
+                messageInput.focus();
+                break;
+            case 'delete':
+                if (message.username === currentUser) {
+                    socket.send(JSON.stringify({
+                        type: 'delete',
+                        messageId: message.id,
+                    }));
+                }
+                break;
+            case 'copy':
+                navigator.clipboard.writeText(message.text.replace(/<br\s*\/?>/gi, '\n'));
+                break;
+            case 'reply':
+                messageInput.value = `@${message.username} `;
+                messageInput.focus();
+                break;
+        }
     }
 });
