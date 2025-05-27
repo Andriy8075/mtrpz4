@@ -3,6 +3,15 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 class ChatServer {
     constructor() {
         this.server = http.createServer(this.handleRequest.bind(this));
@@ -83,7 +92,7 @@ class ChatServer {
         ws.username = data.username;
         this.broadcast({
             type: 'system',
-            text: `${data.username} has joined the chat`,
+            text: `${escapeHtml(data.username)} has joined the chat`,
             timestamp: new Date().toISOString()
         });
     }
@@ -156,7 +165,7 @@ class ChatServer {
         if (ws.username) {
             this.broadcast({
                 type: 'system',
-                text: `${ws.username} has left the chat`,
+                text: `${escapeHtml(ws.username)} has left the chat`,
                 timestamp: new Date().toISOString()
             });
         }

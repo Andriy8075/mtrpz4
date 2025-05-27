@@ -35,6 +35,15 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/'/g, "&#039;");
     }
 
+    function unescapeHtml(safe) {
+        return safe
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"')
+            .replace(/&#039;/g, "'");
+    }
+
     function adjustTextareaHeight() {
         messageInput.style.height = 'auto';
 
@@ -216,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const bubble = messageElement.querySelector('.message-bubble');
             const timeElement = messageElement.querySelector('.message-time');
 
-            if (bubble) bubble.innerHTML = message.newText;
+            if (bubble) bubble.innerHTML = nl2br(escapeHtml(message.newText));
             if (timeElement) {
                 const originalTime = timeElement.textContent.split(' ')[0];
                 timeElement.innerHTML = `${originalTime} <span class="edited-indicator">(edited at ${new Date(message.editTimestamp).toLocaleTimeString()})</span>`;
@@ -297,9 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'edit':
                 isEditing = true;
                 adjustTextareaHeight();
-
-                const selectedMessageText = nl2br(escapeHtml(message.text));
-                messageInput.value = selectedMessageText.replace(/<br\s*\/?>/gi, '\n');
+                messageInput.value = unescapeHtml(message.text.replace(/<br\s*\/?>/gi, '\n'));
                 selectedMessageId = message.id;
 
                 messageInput.focus();
@@ -313,7 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 break;
             case 'copy':
-                navigator.clipboard.writeText(message.text.replace(/<br\s*\/?>/gi, '\n'));
+                navigator.clipboard.writeText(unescapeHtml(message.text.replace(/<br\s*\/?>/gi, '\n')));
                 break;
         }
     }
